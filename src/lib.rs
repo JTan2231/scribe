@@ -56,22 +56,34 @@ pub fn get_data_dir() -> std::path::PathBuf {
 }
 
 pub struct Logger {
-    file: std::fs::File,
+    file: Box<dyn std::io::Write>,
 }
 
 static mut INSTANCE: Option<Logger> = None;
 static INIT: Once = Once::new();
 
+#[allow(static_mut_refs)]
 impl Logger {
-    pub fn init(filename: &str) -> &'static Logger {
+    pub fn init(filename: Option<&str>) -> &'static Logger {
         unsafe {
             INIT.call_once(|| {
                 INSTANCE = Some(Logger {
-                    file: std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(filename)
-                        .expect("Failed to open log file"),
+                    file: match filename {
+                        Some(fname) => {
+                            println!("Initializing logging to {}", fname);
+                            Box::new(
+                                std::fs::OpenOptions::new()
+                                    .create(true)
+                                    .append(true)
+                                    .open(fname)
+                                    .expect("Failed to open log file"),
+                            )
+                        }
+                        None => {
+                            println!("No log file given; logging to stdout");
+                            Box::new(std::io::stdout())
+                        }
+                    },
                 });
             });
 
@@ -79,41 +91,25 @@ impl Logger {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn info(message: String) {
+    fn write(message: String) {
         unsafe {
             if INSTANCE.is_none() {
                 panic!("Logger not initialized");
             }
 
-            let mut file = INSTANCE
-                .as_ref()
-                .unwrap()
-                .file
-                .try_clone()
-                .expect("Failed to clone file");
-
-            let message = format!("{} [INFO]: {}", chrono::Local::now(), message);
-            writeln!(file, "{}", message).expect("Failed to write to log file");
+            let file = &mut INSTANCE.as_mut().unwrap().file;
+            writeln!(file, "{}", message).expect("Failed to write to log");
         }
     }
 
+    pub fn info(message: String) {
+        let message = format!("{} [INFO]: {}", chrono::Local::now(), message);
+        Logger::write(message);
+    }
+
     pub fn error(message: String) {
-        unsafe {
-            if INSTANCE.is_none() {
-                panic!("Logger not initialized");
-            }
-
-            let mut file = INSTANCE
-                .as_ref()
-                .unwrap()
-                .file
-                .try_clone()
-                .expect("Failed to clone file");
-
-            let message = format!("{} [ERROR]: {}", chrono::Local::now(), message);
-            writeln!(file, "{}", message).expect("Failed to write to log file");
-        }
+        let message = format!("{} [ERROR]: {}", chrono::Local::now(), message);
+        Logger::write(message);
     }
 }
 
