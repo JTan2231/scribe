@@ -99,6 +99,7 @@ impl Logger {
 
             let file = &mut INSTANCE.as_mut().unwrap().file;
             writeln!(file, "{}", message).expect("Failed to write to log");
+            file.flush().expect("Failed to flush file");
         }
     }
 
